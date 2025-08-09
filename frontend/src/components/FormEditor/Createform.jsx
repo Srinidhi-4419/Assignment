@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Plus, Save, Eye, Trash2, Upload, Move, GripVertical, X, Loader2 } from 'lucide-react';
+import { Plus, Save, Eye, Trash2, Upload, X, Loader2 } from 'lucide-react';
 
-import { FormHeader } from '../FormEditor/FormHeader';
-import { QuestionList } from '../FormEditor/QuestionList';
-import { PreviewPane } from '../FormEditor/PreviewPane';
-import { QuestionEditor } from '../FormEditor/QuestionEditor';
-import { ClozeQuestion } from '../FormEditor/ClozeQuesiton';
-import { CategorizeQuestion } from '../FormEditor/CategorizeQuestion';
-import { ComprehensionQuestion } from '../FormEditor/ComprehensionQuestion';
+import { FormHeader } from './FormHeader';
+import { QuestionList } from './QuestionList';
+import { PreviewPane } from './PreviewPane';
+import { QuestionEditor } from './QuestionEditor';
+import { ClozeQuestion } from './ClozeQuesiton';
+import { CategorizeQuestion } from './CategorizeQuestion';
+import { ComprehensionQuestion } from './ComprehensionQuestion';
 
 const CreateForm = () => {
   const [form, setForm] = useState({
@@ -47,6 +47,7 @@ const CreateForm = () => {
       ...prev,
       questions: [...prev.questions, newQuestion]
     }));
+    // Set the newly added question as selected
     setSelectedQuestionIndex(form.questions.length);
   };
 
@@ -59,13 +60,15 @@ const CreateForm = () => {
   const handleDeleteQuestion = (index) => {
     const newQuestions = form.questions.filter((_, i) => i !== index);
     setForm(prev => ({ ...prev, questions: newQuestions }));
-    if (selectedQuestionIndex >= newQuestions.length) {
-      setSelectedQuestionIndex(newQuestions.length - 1);
+    
+    // Update selected question index after deletion
+    if (selectedQuestionIndex === index) {
+      // If we deleted the selected question, select the previous one or null if it was the first
+      setSelectedQuestionIndex(index > 0 ? index - 1 : (newQuestions.length > 0 ? 0 : null));
+    } else if (selectedQuestionIndex !== null && selectedQuestionIndex > index) {
+      // If we deleted a question before the selected one, adjust the index
+      setSelectedQuestionIndex(selectedQuestionIndex - 1);
     }
-  };
-
-  const handleReorderQuestions = (newQuestions) => {
-    setForm(prev => ({ ...prev, questions: newQuestions }));
   };
 
   // Validation function to ensure data matches schema
@@ -238,7 +241,7 @@ const CreateForm = () => {
     try {
       if (formId) {
         // Update existing form - PUT request
-        const response = await fetch(`http://localhost:5000/api/forms/${formId}`, {
+        const response = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/forms/${formId}`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
@@ -256,7 +259,7 @@ const CreateForm = () => {
         return result;
       } else {
         // Create new form - POST request
-        const response = await fetch('http://localhost:5000/api/forms', {
+        const response = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/forms`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -286,76 +289,79 @@ const CreateForm = () => {
   const selectedQuestion = selectedQuestionIndex !== null ? form.questions[selectedQuestionIndex] : null;
 
   return (
-    <div className="min-h-screen bg-gray-100 p-4">
-      <div className="max-w-7xl mx-auto">
-        <div className="flex justify-between items-center mb-6">
-          <h1 className="text-3xl font-bold text-gray-800">Form Builder</h1>
-          <div className="flex space-x-4">
-            <button
-              onClick={() => setShowPreview(!showPreview)}
-              className={`flex items-center px-4 py-2 rounded-md transition-colors ${
-                showPreview 
-                  ? 'bg-gray-500 text-white hover:bg-gray-600' 
-                  : 'bg-blue-500 text-white hover:bg-blue-600'
-              }`}
-            >
-              <Eye className="w-4 h-4 mr-2" />
-              {showPreview ? 'Edit' : 'Preview'}
-            </button>
-            <button
-              onClick={handleSaveForm}
-              disabled={saving}
-              className="flex items-center px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 disabled:opacity-50"
-            >
-              {saving ? (
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              ) : (
-                <Save className="w-4 h-4 mr-2" />
-              )}
-              {saving ? 'Saving...' : (formId ? 'Update Form' : 'Save Form')}
-            </button>
+    <div className="min-h-screen bg-gray-100">
+      <div className="w-full">
+        <div className="px-4 py-6">
+          <div className="flex justify-between items-center mb-6">
+            <h1 className="text-3xl font-bold text-gray-800">Form Builder</h1>
+            <div className="flex space-x-4">
+              <button
+                onClick={() => setShowPreview(!showPreview)}
+                className={`flex items-center px-4 py-2 rounded-md transition-colors ${
+                  showPreview 
+                    ? 'bg-gray-500 text-white hover:bg-gray-600' 
+                    : 'bg-blue-500 text-white hover:bg-blue-600'
+                }`}
+              >
+                <Eye className="w-4 h-4 mr-2" />
+                {showPreview ? 'Edit' : 'Preview'}
+              </button>
+              <button
+                onClick={handleSaveForm}
+                disabled={saving}
+                className="flex items-center px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 disabled:opacity-50"
+              >
+                {saving ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <Save className="w-4 h-4 mr-2" />
+                )}
+                {saving ? 'Saving...' : (formId ? 'Update Form' : 'Save Form')}
+              </button>
+            </div>
           </div>
         </div>
 
         {showPreview ? (
-          <PreviewPane form={form} />
+          <div className="w-full">
+            <PreviewPane form={form} />
+          </div>
         ) : (
-          <div className="space-y-6">
-            {/* Main form content - now full width */}
+          <div className="px-4">
             <div className="space-y-6">
-              <FormHeader form={form} onUpdate={setForm} />
-              <QuestionList
-                questions={form.questions}
-                onAddQuestion={handleAddQuestion}
-                onSelectQuestion={setSelectedQuestionIndex}
-                selectedQuestionIndex={selectedQuestionIndex}
-                onDeleteQuestion={handleDeleteQuestion}
-                onReorderQuestions={handleReorderQuestions}
-              />
-            </div>
-            
-            {/* Question editor at bottom - only show when a question is selected */}
-            {selectedQuestion && (
-              <div className="mt-8 border-t pt-6">
-                <div className="flex justify-between items-center mb-4">
-                  <h2 className="text-xl font-semibold text-gray-800">
-                    Edit Question {selectedQuestionIndex + 1}
-                  </h2>
-                  <button
-                    onClick={() => setSelectedQuestionIndex(null)}
-                    className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
-                </div>
-                <div className="bg-white rounded-lg shadow-sm border p-6">
-                  <QuestionEditor
-                    question={selectedQuestion}
-                    onUpdate={handleUpdateQuestion}
-                  />
-                </div>
+              <div className="space-y-6 w-full">
+                <FormHeader form={form} onUpdate={setForm} />
+                <QuestionList
+                  questions={form.questions}
+                  onAddQuestion={handleAddQuestion}
+                  onSelectQuestion={setSelectedQuestionIndex}
+                  selectedQuestionIndex={selectedQuestionIndex}
+                  onDeleteQuestion={handleDeleteQuestion}
+                />
               </div>
-            )}
+              
+              {selectedQuestion && (
+                <div className="mt-8 border-t pt-6 w-full">
+                  <div className="flex justify-between items-center mb-4">
+                    <h2 className="text-xl font-semibold text-gray-800">
+                      Edit Question {selectedQuestionIndex + 1}
+                    </h2>
+                    <button
+                      onClick={() => setSelectedQuestionIndex(null)}
+                      className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+                  <div className="bg-white rounded-lg shadow-sm border p-6 w-full">
+                    <QuestionEditor
+                      question={selectedQuestion}
+                      onUpdate={handleUpdateQuestion}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>

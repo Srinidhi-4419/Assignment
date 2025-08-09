@@ -5,7 +5,7 @@ import 'react-toastify/dist/ReactToastify.css';
 import { QuestionEditor } from '../FormEditor/QuestionEditor';
 import { QuestionList } from '../FormEditor/QuestionList';
 import { FormHeader } from '../FormEditor/FormHeader';
-import ResponseAnalytics from './ResponseAnalytics';
+import ResponseAnalytics from '../FormEditor/ResponseAnalytics';
 // Test Taking Component
 const TestTaker = ({ form, onBack, isPreview = false }) => {
   const [answers, setAnswers] = useState({});
@@ -170,8 +170,8 @@ const TestTaker = ({ form, onBack, isPreview = false }) => {
       };
   
       console.log('Sending test response:', testResponse); // Debug log
-  
-      const response = await fetch(`http://localhost:5000/api/forms/${form._id}/responses`, {
+  console.log(import.meta.env.VITE_BACKEND_URL);
+      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/forms/${form._id}/responses`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -566,7 +566,7 @@ const TestTaker = ({ form, onBack, isPreview = false }) => {
                   <img 
                     src={question.image} 
                     alt="Question" 
-                    className="max-w-md max-h-48 object-cover rounded-lg border border-gray-200 shadow-sm" 
+                    className="max-w object-cover rounded-lg border border-gray-200 shadow-sm" 
                   />
                 </div>
               )}
@@ -717,7 +717,7 @@ const FormCraftApp = () => {
   const loadForms = async () => {
     setLoading(true);
     try {
-      const response = await fetch('http://localhost:5000/api/forms');
+      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/forms`);
       if (response.ok) {
         const data = await response.json();
         console.log('API Response:', data); // Debug log
@@ -1069,7 +1069,7 @@ const FormBuilder = ({ onBack, existingForm }) => {
     setSaving(true);
     try {
       if (formId) {
-        const response = await fetch(`http://localhost:5000/api/forms/${formId}`, {
+        const response = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/forms/${formId}`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
@@ -1087,7 +1087,7 @@ const FormBuilder = ({ onBack, existingForm }) => {
           autoClose: 3000,
         });
       } else {
-        const response = await fetch('http://localhost:5000/api/forms', {
+        const response = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/forms`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

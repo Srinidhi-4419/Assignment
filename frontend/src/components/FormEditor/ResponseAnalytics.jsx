@@ -40,8 +40,8 @@ const ResponseAnalytics = ({ formId, formTitle, onBack }) => {
     try {
       // Load both responses and analytics
       const [responsesRes, analyticsRes] = await Promise.all([
-        fetch(`http://localhost:5000/api/forms/${formId}/responses`),
-        fetch(`http://localhost:5000/api/forms/${formId}/analytics`)
+        fetch(`${import.meta.env.VITE_BACKEND_URL}/api/forms/${formId}/responses`),
+        fetch(`${import.meta.env.VITE_BACKEND_URL}/api/forms/${formId}/analytics`)
       ]);
 
       if (responsesRes.ok && analyticsRes.ok) {
@@ -62,7 +62,7 @@ const ResponseAnalytics = ({ formId, formTitle, onBack }) => {
 
   const loadResponseDetail = async (responseId) => {
     try {
-      const response = await fetch(`http://localhost:5000/api/forms/responses/${responseId}`);
+      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/forms/responses/${responseId}`);
       if (response.ok) {
         const responseData = await response.json();
         setSelectedResponse(responseData);

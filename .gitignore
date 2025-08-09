@@ -1,2 +1,3 @@
 # Ignore backend environment file
 /backend/env
+/fronten/env

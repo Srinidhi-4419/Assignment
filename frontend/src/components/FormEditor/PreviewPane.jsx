@@ -490,11 +490,13 @@ export const PreviewPane = ({ form }) => {
         </div>
 
         {form.headerImage && (
-          <img 
-            src={form.headerImage} 
-            alt="Form Header" 
-            className="w-full max-h-64 object-cover rounded-lg shadow-sm" 
-          />
+          <div className="w-full">
+            <img 
+              src={form.headerImage} 
+              alt="Form Header" 
+              className="w-full h-auto max-h-96 object-contain rounded-lg shadow-lg border border-gray-200"
+            />
+          </div>
         )}
       </div>
 
@@ -552,14 +554,14 @@ export const PreviewPane = ({ form }) => {
                   </div>
                 </div>
 
-                {question.image && (
+                {(question.headerImage || question.image) && (
                   <div className="mb-6">
-                    <img 
-                      src={question.image} 
-                      alt="Question" 
-                      className="max-w-md max-h-48 object-cover rounded-lg border border-gray-200 shadow-sm" 
-                    />
-                  </div>
+                  <img 
+                    src={question.image} 
+                    alt="Question" 
+                    className="max-w object-cover rounded-lg border border-gray-200 shadow-sm" 
+                  />
+                </div>
                 )}
 
                 {/* Question Content */}
