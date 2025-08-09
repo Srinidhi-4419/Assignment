@@ -1,0 +1,39 @@
+/* Add this to your App.css file */
+
+/* Reset default margins and padding */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+/* Ensure html, body, and root take full height */
+html, body {
+  height: 100%;
+  width: 100%;
+}
+
+#root {
+  height: 100%;
+  width: 100%;
+}
+
+/* Make sure App component takes full height */
+.App {
+  height: 100vh;
+  width: 100vw;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow-x: hidden; /* Prevent horizontal scroll */
+}
+
+/* Optional: Add smooth scrolling */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Ensure your FormCraftApp takes full height */
+.form-craft-container {
+  min-height: 100vh;
+  width: 100%;
+}
