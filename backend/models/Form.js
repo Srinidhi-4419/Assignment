@@ -1,6 +1,6 @@
 const mongoose = require('mongoose');
 
-// Categorize Question Schema
+/* ----------------- Categorize Question Schema ----------------- */
 const categorizeSchema = new mongoose.Schema({
   type: { type: String, default: 'categorize' },
   title: { type: String, required: true },
@@ -31,7 +31,7 @@ const categorizeSchema = new mongoose.Schema({
   }
 }, { _id: false });
 
-// Cloze Question Schema
+/* ----------------- Cloze Question Schema ----------------- */
 const clozeSchema = new mongoose.Schema({
   type: { type: String, default: 'cloze' },
   title: { type: String, required: true },
@@ -57,7 +57,7 @@ const clozeSchema = new mongoose.Schema({
   }
 }, { _id: false });
 
-// Comprehension Question Schema
+/* ----------------- Comprehension Question Schema ----------------- */
 const comprehensionSchema = new mongoose.Schema({
   type: { type: String, default: 'comprehension' },
   title: { type: String, required: true },
@@ -68,10 +68,7 @@ const comprehensionSchema = new mongoose.Schema({
       type: { type: String, enum: ['mcq', 'true-false'], default: 'mcq' },
       question: { type: String, required: true },
       options: [String],
-      answer: {
-        type: mongoose.Schema.Types.Mixed,
-        required: true
-      },
+      answer: { type: mongoose.Schema.Types.Mixed, required: true },
       points: { type: Number, default: 1, min: 0 }
     }],
     validate: {
@@ -83,39 +80,33 @@ const comprehensionSchema = new mongoose.Schema({
   }
 }, { _id: false });
 
-// Main Form Schema
+/* ----------------- Base Question Schema (for discriminators) ----------------- */
+const baseQuestionSchema = new mongoose.Schema(
+  { type: { type: String, required: true } },
+  { discriminatorKey: 'type', _id: false }   // important for discriminators
+);
+
+/* ----------------- Main Form Schema ----------------- */
 const formSchema = new mongoose.Schema({
-  title: { 
-    type: String, 
-    required: true,
-    trim: true
-  },
+  title: { type: String, required: true, trim: true },
   headerImage: String,
-  questions: {
-    type: [mongoose.Schema.Types.Mixed],
-    validate: [
-      {
-        validator: function (questions) {
-          return questions.length > 0;
-        },
-        message: 'At least one question is required'
-      },
-      {
-        validator: function (questions) {
-          return questions.every(q => ['categorize', 'cloze', 'comprehension'].includes(q.type));
-        },
-        message: 'Invalid question type found'
-      }
-    ]
-  },
+  questions: [baseQuestionSchema], // use base schema instead of Mixed
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
 });
 
-// Update timestamps
-formSchema.pre('save', function (next) {
+// auto-update timestamp
+formSchema.pre('save', function(next) {
   this.updatedAt = new Date();
   next();
 });
 
-module.exports = mongoose.model('Form', formSchema);
+/* ----------------- Build Model ----------------- */
+const Form = mongoose.model('Form', formSchema);
+
+// Attach discriminators (sub-schemas)
+Form.discriminator('categorize', categorizeSchema);
+Form.discriminator('cloze', clozeSchema);
+Form.discriminator('comprehension', comprehensionSchema);
+
+module.exports = Form;
