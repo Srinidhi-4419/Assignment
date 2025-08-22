@@ -794,37 +794,10 @@ export const PreviewPane = ({ form, mode = 'preview', onBack, onSubmit }) => {
 
   return (
     <div className="bg-white rounded-lg border border-gray-200 shadow-sm">
-      {/* Header - Show navigation for test mode only */}
-      {mode === 'test' && (
-        <div className="bg-white shadow-sm border-b">
-          <div className="max-w-7xl mx-auto px-4 py-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-4">
-                {onBack && (
-                  <button
-                    onClick={onBack}
-                    className="flex items-center px-3 py-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-md transition-colors"
-                  >
-                    <ArrowLeft className="w-4 h-4 mr-2" />
-                    Back
-                  </button>
-                )}
-                <h1 className="text-2xl font-bold text-gray-900">
-                  {form.title || 'Untitled Form'}
-                </h1>
-              </div>
-              <div className="bg-gray-100 text-gray-700 px-3 py-2 rounded-full text-sm font-medium">
-                {totalQuestions} Question{totalQuestions !== 1 ? 's' : ''}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Form Header - Only show for preview mode */}
-      {mode === 'preview' && (
-        <div className="border-b border-gray-200 p-6">
-          <div className="flex items-center justify-between mb-4">
+      {/* Single Header - Different styling for test vs preview */}
+      <div className="bg-white shadow-sm border-b">
+        <div className="max-w-7xl mx-auto px-4 py-4">
+          <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
               {onBack && (
                 <button
@@ -835,13 +808,15 @@ export const PreviewPane = ({ form, mode = 'preview', onBack, onSubmit }) => {
                   Back
                 </button>
               )}
-              <h1 className="text-3xl font-bold text-gray-900">
+              <h1 className="text-2xl font-bold text-gray-900">
                 {form.title || 'Untitled Form'}
-                <span className="text-blue-600 ml-2">(Preview)</span>
+                {mode === 'preview' && (
+                  <span className="text-blue-600 ml-2">(Preview)</span>
+                )}
               </h1>
             </div>
             <div className="flex items-center space-x-4">
-              {totalPoints > 0 && (
+              {mode === 'preview' && totalPoints > 0 && (
                 <div className="bg-gradient-to-r from-green-500 to-blue-500 text-white px-4 py-2 rounded-full flex items-center space-x-2">
                   <Award className="w-5 h-5" />
                   <span className="font-bold">{totalPoints} Total Points</span>
@@ -852,31 +827,10 @@ export const PreviewPane = ({ form, mode = 'preview', onBack, onSubmit }) => {
               </div>
             </div>
           </div>
-
-          {form.headerImage && (
-            <div className="w-full">
-              <img 
-                src={form.headerImage} 
-                alt="Form Header" 
-                className="w-full h-auto max-h-96 object-contain rounded-lg shadow-lg border border-gray-200"
-              />
-            </div>
-          )}
         </div>
-      )}
+      </div>
 
-      {/* Header image for test mode (if exists) */}
-      {mode === 'test' && form.headerImage && (
-        <div className="border-b border-gray-200 p-6">
-          <div className="w-full">
-            <img 
-              src={form.headerImage} 
-              alt="Form Header" 
-              className="w-full h-auto max-h-96 object-contain rounded-lg shadow-lg border border-gray-200"
-            />
-          </div>
-        </div>
-      )}
+
 
       {/* Questions */}
       <div className="p-6">
@@ -932,16 +886,16 @@ export const PreviewPane = ({ form, mode = 'preview', onBack, onSubmit }) => {
                   </div>
                 </div>
 
+                {/* Question Image - Full width styling */}
                 {(question.headerImage || question.image) && (
                   <div className="mb-6">
                     <img 
-                      src={question.image} 
+                      src={question.image || question.headerImage} 
                       alt="Question" 
-                      className="max-w object-cover rounded-lg border border-gray-200 shadow-sm" 
+                      className="w-full h-[900px] object-cover rounded-lg border border-gray-200 shadow-sm" 
                     />
                   </div>
                 )}
-
                 {/* Question Content */}
                 {question.type === 'categorize' && renderCategorizePreview(question, index)}
                 {question.type === 'cloze' && renderClozePreview(question, index)}
