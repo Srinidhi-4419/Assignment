@@ -1,76 +1,161 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { GripVertical, Award, Clock, Target, CheckCircle, XCircle } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd'
+import { GripVertical, Award, Clock, Target, CheckCircle, XCircle, Send, Loader2, ArrowLeft } from 'lucide-react';
+import { toast } from 'react-toastify';
 
-export const PreviewPane = ({ form }) => {
-  const [draggedItem, setDraggedItem] = useState(null);
-  const [draggedOption, setDraggedOption] = useState(null);
+export const PreviewPane = ({ form, mode = 'preview', onBack, onSubmit }) => {
   const [answers, setAnswers] = useState({});
   const [categoryItems, setCategoryItems] = useState({});
   const [blankAnswers, setBlankAnswers] = useState({});
+  const [clozeOptions, setClozeOptions] = useState({});
+  const [submitting, setSubmitting] = useState(false);
+  const [startTime] = useState(Date.now());
   
-  // Initialize category items for drag and drop
+  // Initialize category items and cloze options for drag and drop
   useEffect(() => {
     const newCategoryItems = {};
+    const newClozeOptions = {};
+    
     form.questions?.forEach((question, qIndex) => {
       if (question.type === 'categorize') {
-        newCategoryItems[qIndex] = {};
+        newCategoryItems[qIndex] = {
+          available: question.items?.map((item, itemIndex) => ({
+            id: `item-${qIndex}-${itemIndex}`,
+            text: item.text,
+            belongsTo: item.belongsTo
+          })) || [],
+          categories: {}
+        };
         question.categories?.forEach((category, catIndex) => {
-          newCategoryItems[qIndex][catIndex] = [];
+          newCategoryItems[qIndex].categories[catIndex] = [];
+        });
+      }
+      
+      if (question.type === 'cloze') {
+        // Initialize all available options for cloze questions
+        const allOptions = [];
+        if (question.blanks && question.blankOptions) {
+          question.blanks.forEach((blank, index) => {
+            const options = question.blankOptions[index];
+            if (options) {
+              // Add correct answer (but don't mark it as correct in test mode)
+              allOptions.push({ 
+                id: `option-${qIndex}-${index}-correct`,
+                text: options.correct, 
+                type: mode === 'preview' ? 'correct' : 'option',
+                blankIndex: index,
+                points: options.points || 0
+              });
+              // Add additional options
+              options.additional?.forEach((option, optIndex) => {
+                if (option.trim()) {
+                  allOptions.push({ 
+                    id: `option-${qIndex}-${index}-${optIndex}`,
+                    text: option, 
+                    type: 'additional', 
+                    blankIndex: index,
+                    points: 0
+                  });
+                }
+              });
+            }
+          });
+        }
+        // Shuffle options
+        newClozeOptions[qIndex] = {
+          available: allOptions.sort(() => Math.random() - 0.5),
+          blanks: {}
+        };
+        // Initialize blank slots
+        question.blanks?.forEach((blank, index) => {
+          newClozeOptions[qIndex].blanks[index] = null;
         });
       }
     });
+    
     setCategoryItems(newCategoryItems);
-  }, [form]);
+    setClozeOptions(newClozeOptions);
+  }, [form, mode]);
 
-  const handleCategorizeItemDrag = (e, item, questionIndex) => {
-    setDraggedItem({ item, questionIndex });
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', item.text);
-  };
+  const handleDragEnd = (result, questionIndex, questionType) => {
+    const { destination, source, draggableId } = result;
 
-  const handleCategoryDrop = (e, questionIndex, categoryIndex) => {
-    e.preventDefault();
-    if (draggedItem && draggedItem.questionIndex === questionIndex) {
+    if (!destination) return;
+
+    if (questionType === 'categorize') {
       const newCategoryItems = { ...categoryItems };
+      const questionItems = { ...newCategoryItems[questionIndex] };
       
-      // Remove item from all categories first
-      Object.keys(newCategoryItems[questionIndex] || {}).forEach(catKey => {
-        newCategoryItems[questionIndex][catKey] = newCategoryItems[questionIndex][catKey].filter(
-          item => item !== draggedItem.item.text
+      // Find the dragged item
+      let draggedItem = null;
+      if (source.droppableId === 'available') {
+        draggedItem = questionItems.available.find(item => item.id === draggableId);
+      } else {
+        const sourceCategoryIndex = source.droppableId.replace('category-', '');
+        draggedItem = questionItems.categories[sourceCategoryIndex].find(item => item.id === draggableId);
+      }
+      
+      if (!draggedItem) return;
+      
+      // Remove item from source
+      if (source.droppableId === 'available') {
+        questionItems.available = questionItems.available.filter(item => item.id !== draggableId);
+      } else {
+        const sourceCategoryIndex = source.droppableId.replace('category-', '');
+        questionItems.categories[sourceCategoryIndex] = questionItems.categories[sourceCategoryIndex].filter(
+          item => item.id !== draggableId
         );
-      });
-      
-      // Add to target category
-      if (!newCategoryItems[questionIndex]) {
-        newCategoryItems[questionIndex] = {};
-      }
-      if (!newCategoryItems[questionIndex][categoryIndex]) {
-        newCategoryItems[questionIndex][categoryIndex] = [];
-      }
-      if (!newCategoryItems[questionIndex][categoryIndex].includes(draggedItem.item.text)) {
-        newCategoryItems[questionIndex][categoryIndex].push(draggedItem.item.text);
       }
       
+      // Add item to destination
+      if (destination.droppableId === 'available') {
+        questionItems.available.splice(destination.index, 0, draggedItem);
+      } else {
+        const destCategoryIndex = destination.droppableId.replace('category-', '');
+        questionItems.categories[destCategoryIndex].splice(destination.index, 0, draggedItem);
+      }
+      
+      newCategoryItems[questionIndex] = questionItems;
       setCategoryItems(newCategoryItems);
-      setDraggedItem(null);
     }
-  };
-
-  const handleClozeDrag = (e, option, questionIndex, blankIndex) => {
-    setDraggedOption({ option, questionIndex, blankIndex });
-    e.dataTransfer.effectAllowed = 'move';
-  };
-
-  const handleBlankDrop = (e, questionIndex, blankIndex) => {
-    e.preventDefault();
-    if (draggedOption && draggedOption.questionIndex === questionIndex) {
-      const newBlankAnswers = { ...blankAnswers };
-      if (!newBlankAnswers[questionIndex]) {
-        newBlankAnswers[questionIndex] = {};
+    
+    if (questionType === 'cloze') {
+      const newClozeOptions = { ...clozeOptions };
+      const questionOptions = { ...newClozeOptions[questionIndex] };
+      
+      // Find the dragged option
+      let draggedOption = null;
+      if (source.droppableId === 'word-bank') {
+        draggedOption = questionOptions.available.find(opt => opt.id === draggableId);
+      } else {
+        const sourceBlankIndex = source.droppableId.replace('blank-', '');
+        draggedOption = questionOptions.blanks[sourceBlankIndex];
       }
-      newBlankAnswers[questionIndex][blankIndex] = draggedOption.option;
-      setBlankAnswers(newBlankAnswers);
-      setDraggedOption(null);
+      
+      if (!draggedOption) return;
+      
+      // Remove option from source
+      if (source.droppableId === 'word-bank') {
+        questionOptions.available = questionOptions.available.filter(opt => opt.id !== draggableId);
+      } else {
+        const sourceBlankIndex = source.droppableId.replace('blank-', '');
+        questionOptions.blanks[sourceBlankIndex] = null;
+      }
+      
+      // Add option to destination
+      if (destination.droppableId === 'word-bank') {
+        questionOptions.available.splice(destination.index, 0, draggedOption);
+      } else {
+        const destBlankIndex = destination.droppableId.replace('blank-', '');
+        // If destination blank already has an item, move it back to available
+        if (questionOptions.blanks[destBlankIndex]) {
+          questionOptions.available.push(questionOptions.blanks[destBlankIndex]);
+        }
+        questionOptions.blanks[destBlankIndex] = draggedOption;
+      }
+      
+      newClozeOptions[questionIndex] = questionOptions;
+      setClozeOptions(newClozeOptions);
     }
   };
 
@@ -79,6 +164,136 @@ export const PreviewPane = ({ form }) => {
       ...prev,
       [`${questionIndex}-${subQuestionIndex}`]: value
     }));
+  };
+
+  const handleSubmitTest = async () => {
+    if (mode === 'preview') {
+      toast.info('This is preview mode - test cannot be submitted', {
+        position: "top-right",
+        autoClose: 3000,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true,
+      });
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      // Transform frontend data to match backend expected format
+      const responses = [];
+
+      form.questions.forEach((question, questionIndex) => {
+        const response = {
+          questionIndex: questionIndex,
+          questionType: question.type
+        };
+
+        switch (question.type) {
+          case 'categorize':
+            response.categorizedItems = [];
+            // Convert categoryItems format to backend expected format
+            if (categoryItems[questionIndex]) {
+              Object.keys(categoryItems[questionIndex].categories).forEach(categoryIndex => {
+                const items = categoryItems[questionIndex].categories[categoryIndex];
+                if (items && items.length > 0) {
+                  items.forEach(item => {
+                    response.categorizedItems.push({
+                      itemText: item.text,
+                      selectedCategory: question.categories[categoryIndex].name
+                    });
+                  });
+                }
+              });
+            }
+            break;
+
+          case 'cloze':
+            response.blankAnswers = [];
+            if (clozeOptions[questionIndex]) {
+              Object.keys(clozeOptions[questionIndex].blanks).forEach(blankIndex => {
+                const filledOption = clozeOptions[questionIndex].blanks[blankIndex];
+                if (filledOption) {
+                  response.blankAnswers.push({
+                    blankIndex: parseInt(blankIndex),
+                    userAnswer: filledOption.text
+                  });
+                }
+              });
+            }
+            break;
+
+          case 'comprehension':
+            response.subQuestionAnswers = [];
+            question.subQuestions?.forEach((subQ, subIndex) => {
+              const answerKey = `${questionIndex}-${subIndex}`;
+              if (answers[answerKey] !== undefined) {
+                response.subQuestionAnswers.push({
+                  subQuestionIndex: subIndex,
+                  subQuestionType: subQ.type,
+                  answer: answers[answerKey]
+                });
+              }
+            });
+            break;
+        }
+
+        responses.push(response);
+      });
+
+      const testResponse = {
+        responses: responses,
+        submittedAt: new Date().toISOString(),
+        completionTime: Date.now() - startTime
+      };
+
+      console.log('Sending test response:', testResponse);
+
+      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/forms/${form._id}/responses`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(testResponse),
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        console.log('Response result:', result);
+        
+        toast.success('Thank you for submitting!', {
+          position: "top-center",
+          autoClose: 2000,
+          hideProgressBar: false,
+          closeOnClick: true,
+          pauseOnHover: false,
+          draggable: true,
+        });
+
+        // Call the onSubmit callback if provided
+        if (onSubmit) {
+          onSubmit(result);
+        }
+
+        // Redirect after toast shows
+        setTimeout(() => {
+          if (onBack) onBack();
+        }, 2200);
+      }
+    } catch (error) {
+      console.error('Error submitting test:', error);
+      toast.error(`Submission failed: ${error.message}`, {
+        position: "top-right",
+        autoClose: 4000,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true,
+      });
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const getTotalPoints = () => {
@@ -104,253 +319,367 @@ export const PreviewPane = ({ form }) => {
   };
 
   const renderCategorizePreview = (question, questionIndex) => {
-    const availableItems = question.items?.filter(item => {
-      return !Object.values(categoryItems[questionIndex] || {}).some(catItems => 
-        catItems.includes(item.text)
-      );
-    }) || [];
+    const questionItems = categoryItems[questionIndex];
+    if (!questionItems) return null;
 
     return (
-      <div className="space-y-6">
-        {/* Instructions */}
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-          <div className="flex items-center space-x-2 mb-2">
-            <GripVertical className="w-5 h-5 text-blue-600" />
-            <span className="text-blue-800 font-medium">Instructions:</span>
+      <DragDropContext onDragEnd={(result) => handleDragEnd(result, questionIndex, 'categorize')}>
+        <div className="space-y-6">
+          {/* Instructions */}
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <div className="flex items-center space-x-2 mb-2">
+              <GripVertical className="w-5 h-5 text-blue-600" />
+              <span className="text-blue-800 font-medium">Instructions:</span>
+            </div>
+            <p className="text-blue-700 text-sm">
+              Drag the items below into the correct categories. Each item belongs to exactly one category.
+            </p>
           </div>
-          <p className="text-blue-700 text-sm">
-            Drag the items below into the correct categories. Each item belongs to exactly one category.
-          </p>
-        </div>
 
-        {/* Categories Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {question.categories?.map((category, catIndex) => {
-            const itemsInCategory = categoryItems[questionIndex]?.[catIndex] || [];
-            const pointsPerItem = category.points || 0;
-            const totalCategoryPoints = itemsInCategory.length * pointsPerItem;
+          {/* Categories Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {question.categories?.map((category, catIndex) => {
+              const itemsInCategory = questionItems.categories[catIndex] || [];
+              const pointsPerItem = category.points || 0;
+              const totalCategoryPoints = itemsInCategory.length * pointsPerItem;
 
-            return (
-              <div
-                key={catIndex}
-                className="border-2 border-dashed border-gray-300 rounded-lg p-4 min-h-[150px] bg-white hover:border-blue-300 transition-colors"
-                onDrop={(e) => handleCategoryDrop(e, questionIndex, catIndex)}
-                onDragOver={(e) => e.preventDefault()}
-              >
-                <div className="flex items-center justify-between mb-3">
-                  <h4 className="font-semibold text-gray-800">{category.name}</h4>
-                  <div className="flex items-center space-x-1">
-                    <Target className="w-4 h-4 text-green-600" />
-                    <span className="text-sm text-green-600 font-medium">
-                      {pointsPerItem}pt each
-                    </span>
-                  </div>
-                </div>
-                
-                {itemsInCategory.length > 0 && (
-                  <div className="bg-green-50 border border-green-200 rounded p-2 mb-3">
-                    <div className="text-xs text-green-700">
-                      {itemsInCategory.length} items • {totalCategoryPoints} total points
-                    </div>
-                  </div>
-                )}
-
-                <div className="space-y-2">
-                  {itemsInCategory.map((item, itemIndex) => (
+              return (
+                <Droppable key={catIndex} droppableId={`category-${catIndex}`}>
+                  {(provided, snapshot) => (
                     <div
-                      key={itemIndex}
-                      draggable
-                      onDragStart={(e) => handleCategorizeItemDrag(e, { text: item }, questionIndex)}
-                      className="bg-green-100 border border-green-300 text-green-800 px-3 py-2 rounded-lg text-sm font-medium flex items-center justify-between cursor-move hover:shadow-md transition-all"
+                      ref={provided.innerRef}
+                      {...provided.droppableProps}
+                      className={`border-2 border-dashed rounded-lg p-4 min-h-[150px] bg-white transition-colors ${
+                        snapshot.isDraggingOver 
+                          ? 'border-blue-400 bg-blue-50' 
+                          : 'border-gray-300 hover:border-blue-300'
+                      }`}
                     >
-                      <div className="flex items-center space-x-2">
-                        <GripVertical className="w-4 h-4 text-green-600" />
-                        <span>{item}</span>
+                      <div className="flex items-center justify-between mb-3">
+                        <h4 className="font-semibold text-gray-800">{category.name}</h4>
+                        {mode === 'preview' && (
+                          <div className="flex items-center space-x-1">
+                            <Target className="w-4 h-4 text-green-600" />
+                            <span className="text-sm text-green-600 font-medium">
+                              {pointsPerItem}pt each
+                            </span>
+                          </div>
+                        )}
                       </div>
-                      <div className="bg-green-200 text-green-800 px-2 py-0.5 rounded-full text-xs font-bold">
-                        +{pointsPerItem}
+                      
+                      {itemsInCategory.length > 0 && mode === 'preview' && (
+                        <div className="bg-green-50 border border-green-200 rounded p-2 mb-3">
+                          <div className="text-xs text-green-700">
+                            {itemsInCategory.length} items • {totalCategoryPoints} total points
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="space-y-2">
+                        {itemsInCategory.map((item, itemIndex) => (
+                          <Draggable key={item.id} draggableId={item.id} index={itemIndex}>
+                            {(provided, snapshot) => (
+                              <div
+                                ref={provided.innerRef}
+                                {...provided.draggableProps}
+                                {...provided.dragHandleProps}
+                                className={`${mode === 'preview' ? 'bg-green-100 border-green-300 text-green-800' : 'bg-blue-100 border-blue-300 text-blue-800'} border px-3 py-2 rounded-lg text-sm font-medium flex items-center justify-between transition-all ${
+                                  snapshot.isDragging ? 'shadow-lg rotate-2 scale-105' : 'hover:shadow-md cursor-move'
+                                }`}
+                              >
+                                <div className="flex items-center space-x-2">
+                                  <GripVertical className="w-4 h-4 text-gray-600" />
+                                  <span>{item.text}</span>
+                                </div>
+                                {mode === 'preview' && (
+                                  <div className="bg-green-200 text-green-800 px-2 py-0.5 rounded-full text-xs font-bold">
+                                    +{pointsPerItem}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </Draggable>
+                        ))}
+                        {provided.placeholder}
+                        {itemsInCategory.length === 0 && (
+                          <div className="text-gray-400 text-sm italic text-center py-8">
+                            Drop items here
+                          </div>
+                        )}
                       </div>
-                    </div>
-                  ))}
-                  {itemsInCategory.length === 0 && (
-                    <div className="text-gray-400 text-sm italic text-center py-8">
-                      Drop items here
                     </div>
                   )}
+                </Droppable>
+              );
+            })}
+          </div>
+
+          {/* Available Items */}
+          {questionItems.available.length > 0 && (
+            <div className="border-t pt-6">
+              <div className="flex items-center space-x-2 mb-4">
+                <h4 className="text-lg font-medium text-gray-700">Items to Categorize:</h4>
+                <div className="bg-gray-100 text-gray-600 px-2 py-1 rounded-full text-sm">
+                  {questionItems.available.length} remaining
                 </div>
               </div>
-            );
-          })}
-        </div>
-
-        {/* Available Items */}
-        {availableItems.length > 0 && (
-          <div className="border-t pt-6">
-            <div className="flex items-center space-x-2 mb-4">
-              <h4 className="text-lg font-medium text-gray-700">Items to Categorize:</h4>
-              <div className="bg-gray-100 text-gray-600 px-2 py-1 rounded-full text-sm">
-                {availableItems.length} remaining
-              </div>
-            </div>
-            <div className="flex flex-wrap gap-3">
-              {availableItems.map((item, itemIndex) => {
-                const category = question.categories?.find(cat => cat.name === item.belongsTo);
-                const points = category?.points || 0;
-                
-                return (
+              
+              <Droppable droppableId="available" direction="horizontal">
+                {(provided, snapshot) => (
                   <div
-                    key={itemIndex}
-                    draggable
-                    onDragStart={(e) => handleCategorizeItemDrag(e, item, questionIndex)}
-                    className="bg-white border-2 border-blue-300 text-blue-800 px-4 py-3 rounded-lg cursor-move hover:shadow-lg transition-all transform hover:scale-105 flex items-center space-x-2"
+                    ref={provided.innerRef}
+                    {...provided.droppableProps}
+                    className={`flex flex-wrap gap-3 p-3 rounded-lg transition-colors min-h-[60px] ${
+                      snapshot.isDraggingOver ? 'bg-gray-100' : ''
+                    }`}
                   >
-                    <GripVertical className="w-4 h-4 text-blue-400" />
-                    <span className="font-medium">{item.text}</span>
-                    <div className="bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full text-xs font-bold">
-                      {points}pt
-                    </div>
+                    {questionItems.available.map((item, itemIndex) => {
+                      const category = question.categories?.find(cat => cat.name === item.belongsTo);
+                      const points = category?.points || 0;
+                      
+                      return (
+                        <Draggable key={item.id} draggableId={item.id} index={itemIndex}>
+                          {(provided, snapshot) => (
+                            <div
+                              ref={provided.innerRef}
+                              {...provided.draggableProps}
+                              {...provided.dragHandleProps}
+                              className={`bg-white border-2 border-blue-300 text-blue-800 px-4 py-3 rounded-lg transition-all flex items-center space-x-2 ${
+                                snapshot.isDragging ? 'shadow-lg rotate-2 scale-105' : 'hover:shadow-lg transform hover:scale-105 cursor-move'
+                              }`}
+                            >
+                              <GripVertical className="w-4 h-4 text-blue-400" />
+                              <span className="font-medium">{item.text}</span>
+                              {mode === 'preview' && (
+                                <div className="bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full text-xs font-bold">
+                                  {points}pt
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </Draggable>
+                      );
+                    })}
+                    {provided.placeholder}
                   </div>
-                );
-              })}
+                )}
+              </Droppable>
             </div>
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+      </DragDropContext>
     );
   };
 
   const renderClozePreview = (question, questionIndex) => {
-    const getAllOptions = () => {
-      const allOptions = [];
-      if (question.blanks && question.blankOptions) {
-        question.blanks.forEach((blank, index) => {
-          const options = question.blankOptions[index];
-          if (options) {
-            // Add correct answer
-            allOptions.push({ text: options.correct, type: 'correct', blankIndex: index });
-            // Add additional options
-            options.additional?.forEach((option) => {
-              if (option.trim()) {
-                allOptions.push({ text: option, type: 'additional', blankIndex: index });
-              }
-            });
-          }
-        });
-      }
-      return allOptions.sort(() => Math.random() - 0.5); // Shuffle options
-    };
+    const questionOptions = clozeOptions[questionIndex];
+    if (!questionOptions) return null;
 
-    const getPreviewText = () => {
-      let previewText = question.text || '';
+    const renderPassageWithBlanks = () => {
+      let passageText = question.text || '';
       const regex = /\[([^\]]+)\]/g;
       let match;
       let result = '';
       let lastIndex = 0;
       let blankIndex = 0;
 
-      while ((match = regex.exec(previewText)) !== null) {
-        result += previewText.substring(lastIndex, match.index);
+      while ((match = regex.exec(passageText)) !== null) {
+        result += passageText.substring(lastIndex, match.index);
         const points = question.blankOptions?.[blankIndex]?.points || 0;
-        const filledAnswer = blankAnswers[questionIndex]?.[blankIndex];
+        const filledOption = questionOptions.blanks[blankIndex];
         
-        result += `<span 
-          class="inline-block min-w-[100px] border-b-2 border-blue-300 mx-1 px-3 py-2 bg-blue-50 drop-zone relative text-center font-medium cursor-pointer hover:bg-blue-100 transition-colors" 
-          data-blank-index="${blankIndex}"
-          style="min-height: 32px;"
-        >${filledAnswer || '____'}<span class="absolute -top-2 -right-1 bg-green-500 text-white text-xs px-1.5 py-0.5 rounded-full font-bold" style="font-size: 10px;">${points}pt</span></span>`;
+        // Create a droppable blank in the passage
+        result += `<span class="blank-container inline-block min-w-[100px]" data-blank-index="${blankIndex}">`;
+        
+        if (filledOption) {
+          result += `<span class="filled-blank inline-block min-w-[100px] border-b-2 border-blue-400 mx-1 px-3 py-2 bg-blue-100 text-center font-medium transition-colors cursor-move" style="min-height: 40px; line-height: 1.2;">${filledOption.text}</span>`;
+        } else {
+          result += `<span class="empty-blank inline-block min-w-[100px] border-b-2 border-dashed border-gray-400 mx-1 px-3 py-2 bg-gray-50 text-center text-gray-400 transition-colors hover:bg-blue-50 hover:border-blue-300" style="min-height: 40px; line-height: 1.2;">____</span>`;
+        }
+        
+        if (mode === 'preview' && points > 0) {
+          result += `<span class="absolute -top-2 -right-1 bg-green-500 text-white text-xs px-1.5 py-0.5 rounded-full font-bold" style="font-size: 10px;">${points}pt</span>`;
+        }
+        
+        result += '</span>';
         lastIndex = regex.lastIndex;
         blankIndex++;
       }
-      result += previewText.substring(lastIndex);
+      result += passageText.substring(lastIndex);
       return result;
     };
 
-    const allOptions = getAllOptions();
-    const usedOptions = Object.values(blankAnswers[questionIndex] || {});
-    const availableOptions = allOptions.filter(option => !usedOptions.includes(option.text));
-
     return (
-      <div className="space-y-6">
-        {/* Instructions */}
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-          <div className="flex items-center space-x-2 mb-2">
-            <GripVertical className="w-5 h-5 text-blue-600" />
-            <span className="text-blue-800 font-medium">Instructions:</span>
-          </div>
-          <p className="text-blue-700 text-sm">
-            Drag the words from the word bank below to fill in the blanks in the passage.
-          </p>
-        </div>
-
-        {/* Passage with Blanks */}
-        <div className="bg-gray-50 border border-gray-200 rounded-lg p-6">
-          <div 
-            className="text-lg leading-relaxed"
-            dangerouslySetInnerHTML={{ __html: getPreviewText() }}
-            onDrop={(e) => {
-              const blankIndex = e.target.getAttribute('data-blank-index');
-              if (blankIndex !== null) {
-                handleBlankDrop(e, questionIndex, parseInt(blankIndex));
-              }
-            }}
-            onDragOver={(e) => e.preventDefault()}
-          />
-        </div>
-
-        {/* Word Bank */}
-        {availableOptions.length > 0 && (
-          <div className="border-t pt-6">
-            <div className="flex items-center space-x-2 mb-4">
-              <h4 className="text-lg font-medium text-gray-700">Word Bank:</h4>
-              <div className="bg-gray-100 text-gray-600 px-2 py-1 rounded-full text-sm">
-                {availableOptions.length} words available
-              </div>
+      <DragDropContext onDragEnd={(result) => handleDragEnd(result, questionIndex, 'cloze')}>
+        <div className="space-y-6">
+          {/* Instructions */}
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <div className="flex items-center space-x-2 mb-2">
+              <GripVertical className="w-5 h-5 text-blue-600" />
+              <span className="text-blue-800 font-medium">Instructions:</span>
             </div>
-            
-            <div className="flex flex-wrap gap-3">
-              {availableOptions.map((option, index) => {
-                const points = option.type === 'correct' 
-                  ? (question.blankOptions?.[option.blankIndex]?.points || 0) 
-                  : 0;
+            <p className="text-blue-700 text-sm">
+              Drag the words from the word bank below to fill in the blanks in the passage.
+            </p>
+          </div>
+
+          {/* Passage with Blanks */}
+          <div className="bg-gray-50 border border-gray-200 rounded-lg p-6">
+            <div className="text-lg leading-relaxed space-y-4">
+              {question.blanks?.map((blank, blankIndex) => {
+                const points = question.blankOptions?.[blankIndex]?.points || 0;
+                const filledOption = questionOptions.blanks[blankIndex];
                 
                 return (
-                  <div
-                    key={index}
-                    draggable
-                    onDragStart={(e) => handleClozeDrag(e, option.text, questionIndex, option.blankIndex)}
-                    className={`px-4 py-3 rounded-lg cursor-move transition-all transform hover:scale-105 hover:shadow-lg flex items-center space-x-2 ${
-                      option.type === 'correct' 
-                        ? 'bg-green-100 border-2 border-green-300 text-green-800' 
-                        : 'bg-blue-100 border-2 border-blue-300 text-blue-800'
-                    }`}
-                  >
-                    <GripVertical className="w-4 h-4 text-gray-400" />
-                    <span className="font-medium">{option.text}</span>
-                    <div className={`px-2 py-0.5 rounded-full text-xs font-bold ${
-                      points > 0 
-                        ? 'bg-green-200 text-green-800' 
-                        : 'bg-gray-200 text-gray-600'
-                    }`}>
-                      {points}pt
+                  <div key={blankIndex} className="inline-block relative">
+                    <div className="flex items-center space-x-2 mb-2">
+                      <span className="text-sm font-medium text-gray-600">Blank {blankIndex + 1}:</span>
+                      {mode === 'preview' && points > 0 && (
+                        <div className="flex items-center space-x-1">
+                          <Target className="w-3 h-3 text-green-600" />
+                          <span className="text-xs text-green-600 font-medium">{points}pt</span>
+                        </div>
+                      )}
                     </div>
+                    
+                    <Droppable droppableId={`blank-${blankIndex}`}>
+                      {(provided, snapshot) => (
+                        <div
+                          ref={provided.innerRef}
+                          {...provided.droppableProps}
+                          className={`inline-block min-w-[120px] min-h-[50px] border-2 border-dashed rounded-lg p-2 transition-colors ${
+                            snapshot.isDraggingOver 
+                              ? 'border-blue-400 bg-blue-50' 
+                              : 'border-gray-300 hover:border-blue-300'
+                          } ${filledOption ? 'bg-blue-50 border-blue-300' : 'bg-gray-50'}`}
+                        >
+                          {filledOption ? (
+                            <Draggable draggableId={filledOption.id} index={0}>
+                              {(provided, snapshot) => (
+                                <div
+                                  ref={provided.innerRef}
+                                  {...provided.draggableProps}
+                                  {...provided.dragHandleProps}
+                                  className={`px-3 py-2 rounded-lg flex items-center space-x-2 transition-all ${
+                                    mode === 'preview' && filledOption.type === 'correct' 
+                                      ? 'bg-green-100 border border-green-300 text-green-800' 
+                                      : 'bg-blue-100 border border-blue-300 text-blue-800'
+                                  } ${
+                                    snapshot.isDragging 
+                                      ? 'shadow-lg rotate-2 scale-105' 
+                                      : 'hover:shadow-md cursor-move'
+                                  }`}
+                                >
+                                  <GripVertical className="w-4 h-4 text-gray-400" />
+                                  <span className="font-medium">{filledOption.text}</span>
+                                  {mode === 'preview' && (
+                                    <div className={`px-2 py-0.5 rounded-full text-xs font-bold ${
+                                      filledOption.points > 0 
+                                        ? 'bg-green-200 text-green-800' 
+                                        : 'bg-gray-200 text-gray-600'
+                                    }`}>
+                                      {filledOption.points}pt
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </Draggable>
+                          ) : (
+                            <div className="text-gray-400 text-sm italic text-center py-3">
+                              Drop word here
+                            </div>
+                          )}
+                          {provided.placeholder}
+                        </div>
+                      )}
+                    </Droppable>
                   </div>
                 );
               })}
             </div>
             
-            <div className="flex items-center space-x-4 mt-4 text-xs text-gray-600">
-              <div className="flex items-center space-x-2">
-                <div className="w-4 h-4 bg-green-100 border border-green-300 rounded"></div>
-                <span>Correct answers (award points)</span>
-              </div>
-              <div className="flex items-center space-x-2">
-                <div className="w-4 h-4 bg-blue-100 border border-blue-300 rounded"></div>
-                <span>Distractors (no points)</span>
-              </div>
+            {/* Original passage text for context */}
+            <div className="mt-6 pt-6 border-t border-gray-200">
+              <h4 className="text-sm font-medium text-gray-600 mb-3">Passage with blanks:</h4>
+              <div 
+                className="text-base leading-relaxed text-gray-700"
+                dangerouslySetInnerHTML={{ __html: renderPassageWithBlanks() }}
+              />
             </div>
           </div>
-        )}
-      </div>
+
+          {/* Word Bank */}
+          {questionOptions.available.length > 0 && (
+            <div className="border-t pt-6">
+              <div className="flex items-center space-x-2 mb-4">
+                <h4 className="text-lg font-medium text-gray-700">Word Bank:</h4>
+                <div className="bg-gray-100 text-gray-600 px-2 py-1 rounded-full text-sm">
+                  {questionOptions.available.length} words available
+                </div>
+              </div>
+              
+              <Droppable droppableId="word-bank" direction="horizontal">
+                {(provided, snapshot) => (
+                  <div
+                    ref={provided.innerRef}
+                    {...provided.droppableProps}
+                    className={`flex flex-wrap gap-3 p-3 rounded-lg transition-colors min-h-[60px] ${
+                      snapshot.isDraggingOver ? 'bg-gray-100' : ''
+                    }`}
+                  >
+                    {questionOptions.available.map((option, index) => (
+                      <Draggable key={option.id} draggableId={option.id} index={index}>
+                        {(provided, snapshot) => (
+                          <div
+                            ref={provided.innerRef}
+                            {...provided.draggableProps}
+                            {...provided.dragHandleProps}
+                            className={`px-4 py-3 rounded-lg transition-all flex items-center space-x-2 ${
+                              mode === 'preview' && option.type === 'correct' 
+                                ? 'bg-green-100 border-2 border-green-300 text-green-800' 
+                                : 'bg-blue-100 border-2 border-blue-300 text-blue-800'
+                            } ${
+                              snapshot.isDragging 
+                                ? 'shadow-lg rotate-2 scale-105' 
+                                : 'hover:shadow-lg transform hover:scale-105 cursor-move'
+                            }`}
+                          >
+                            <GripVertical className="w-4 h-4 text-gray-400" />
+                            <span className="font-medium">{option.text}</span>
+                            {mode === 'preview' && (
+                              <div className={`px-2 py-0.5 rounded-full text-xs font-bold ${
+                                option.points > 0 
+                                  ? 'bg-green-200 text-green-800' 
+                                  : 'bg-gray-200 text-gray-600'
+                              }`}>
+                                {option.points}pt
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </Draggable>
+                    ))}
+                    {provided.placeholder}
+                  </div>
+                )}
+              </Droppable>
+              
+              {mode === 'preview' && (
+                <div className="flex items-center space-x-4 mt-4 text-xs text-gray-600">
+                  <div className="flex items-center space-x-2">
+                    <div className="w-4 h-4 bg-green-100 border border-green-300 rounded"></div>
+                    <span>Correct answers (award points)</span>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <div className="w-4 h-4 bg-blue-100 border border-blue-300 rounded"></div>
+                    <span>Distractors (no points)</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </DragDropContext>
     );
   };
 
@@ -362,9 +691,11 @@ export const PreviewPane = ({ form }) => {
           <div className="bg-gray-50 border border-gray-200 rounded-lg p-6">
             <div className="flex items-center space-x-2 mb-4">
               <h4 className="text-lg font-semibold text-gray-800">Reading Passage</h4>
-              <div className="bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs font-medium">
-                {question.passage.length} characters
-              </div>
+              {mode === 'preview' && (
+                <div className="bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs font-medium">
+                  {question.passage.length} characters
+                </div>
+              )}
             </div>
             <div className="prose prose-gray max-w-none">
               <p className="text-gray-800 leading-relaxed">{question.passage}</p>
@@ -386,12 +717,14 @@ export const PreviewPane = ({ form }) => {
                     {subQ.question}
                   </h5>
                 </div>
-                <div className="flex items-center space-x-2 flex-shrink-0">
-                  <Target className="w-4 h-4 text-green-600" />
-                  <span className="bg-green-100 text-green-800 px-2 py-1 rounded-full text-sm font-bold">
-                    {subQ.points || 1} pts
-                  </span>
-                </div>
+                {mode === 'preview' && (
+                  <div className="flex items-center space-x-2 flex-shrink-0">
+                    <Target className="w-4 h-4 text-green-600" />
+                    <span className="bg-green-100 text-green-800 px-2 py-1 rounded-full text-sm font-bold">
+                      {subQ.points || 1} pts
+                    </span>
+                  </div>
+                )}
               </div>
 
               {subQ.type === 'mcq' && (
@@ -451,11 +784,15 @@ export const PreviewPane = ({ form }) => {
                 <div className="space-y-3">
                   <textarea
                     placeholder="Type your detailed answer here..."
+                    value={answers[`${questionIndex}-${subIndex}`] || ''}
+                    onChange={(e) => handleAnswerChange(questionIndex, subIndex, e.target.value)}
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg h-32 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-y"
                   />
-                  <div className="text-xs text-gray-500">
-                    This is an essay question. Provide a detailed, well-structured response.
-                  </div>
+                  {mode === 'preview' && (
+                    <div className="text-xs text-gray-500">
+                      This is an essay question. Provide a detailed, well-structured response.
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -470,14 +807,62 @@ export const PreviewPane = ({ form }) => {
 
   return (
     <div className="bg-white rounded-lg border border-gray-200 shadow-sm">
+      {/* Header - Show navigation for test mode */}
+      {mode === 'test' && (
+        <div className="bg-white shadow-sm border-b">
+          <div className="max-w-7xl mx-auto px-4 py-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-4">
+                {onBack && (
+                  <button
+                    onClick={onBack}
+                    className="flex items-center px-3 py-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-md transition-colors"
+                  >
+                    <ArrowLeft className="w-4 h-4 mr-2" />
+                    Back
+                  </button>
+                )}
+                <h1 className="text-2xl font-bold text-gray-900">
+                  {form.title}
+                </h1>
+              </div>
+              <button
+                onClick={handleSubmitTest}
+                disabled={submitting}
+                className="flex items-center px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+              >
+                {submitting ? (
+                  <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                ) : (
+                  <Send className="w-5 h-5 mr-2" />
+                )}
+                {submitting ? 'Submitting...' : 'Submit Test'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Form Header */}
       <div className="border-b border-gray-200 p-6">
         <div className="flex items-center justify-between mb-4">
-          <h1 className="text-3xl font-bold text-gray-900">
-            {form.title || 'Untitled Form'}
-          </h1>
           <div className="flex items-center space-x-4">
-            {totalPoints > 0 && (
+            {onBack && (
+              <button
+                onClick={onBack}
+                className="flex items-center px-3 py-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-md transition-colors"
+              >
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                Back
+              </button>
+            )}
+            <h1 className="text-3xl font-bold text-gray-900">
+              {form.title || 'Untitled Form'}
+              {mode === 'preview' && <span className="text-blue-600 ml-2">(Preview)</span>}
+            </h1>
+          </div>
+          <div className="flex items-center space-x-4">
+            {totalPoints > 0 && mode === 'preview' && (
               <div className="bg-gradient-to-r from-green-500 to-blue-500 text-white px-4 py-2 rounded-full flex items-center space-x-2">
                 <Award className="w-5 h-5" />
                 <span className="font-bold">{totalPoints} Total Points</span>
@@ -526,11 +911,11 @@ export const PreviewPane = ({ form }) => {
                         <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-800 capitalize">
                           {question.type.replace('-', ' ')}
                         </span>
-                        {(question.type === 'categorize' || question.type === 'cloze' || question.type === 'comprehension') && (
+                        {(question.type === 'categorize' || question.type === 'cloze' || question.type === 'comprehension') && mode === 'preview' && (
                           <div className="flex items-center space-x-1 text-green-600">
                             <Target className="w-4 h-4" />
                             <span className="text-sm font-medium">
-      {(() => {
+                              {(() => {
                                 if (question.type === 'categorize') {
                                   return question.items?.reduce((total, item) => {
                                     const category = question.categories?.find(cat => cat.name === item.belongsTo);
@@ -556,12 +941,12 @@ export const PreviewPane = ({ form }) => {
 
                 {(question.headerImage || question.image) && (
                   <div className="mb-6">
-                  <img 
-                    src={question.image} 
-                    alt="Question" 
-                    className="max-w object-cover rounded-lg border border-gray-200 shadow-sm" 
-                  />
-                </div>
+                    <img 
+                      src={question.image} 
+                      alt="Question" 
+                      className="max-w object-cover rounded-lg border border-gray-200 shadow-sm" 
+                    />
+                  </div>
                 )}
 
                 {/* Question Content */}
@@ -579,11 +964,28 @@ export const PreviewPane = ({ form }) => {
         <div className="border-t border-gray-200 p-6 bg-gray-50">
           <div className="flex items-center justify-between">
             <div className="text-sm text-gray-600">
-              Form preview • {totalQuestions} question{totalQuestions !== 1 ? 's' : ''}
+              Form {mode} • {totalQuestions} question{totalQuestions !== 1 ? 's' : ''}
             </div>
             <div className="flex items-center space-x-4">
-              <Clock className="w-4 h-4 text-gray-500" />
-              <span className="text-sm text-gray-600">Estimated time: {Math.max(5, totalQuestions * 3)} minutes</span>
+              {mode === 'test' ? (
+                <button
+                  onClick={handleSubmitTest}
+                  disabled={submitting}
+                  className="flex items-center px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+                >
+                  {submitting ? (
+                    <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                  ) : (
+                    <Send className="w-5 h-5 mr-2" />
+                  )}
+                  {submitting ? 'Submitting...' : 'Submit Test'}
+                </button>
+              ) : (
+                <>
+                  <Clock className="w-4 h-4 text-gray-500" />
+                  <span className="text-sm text-gray-600">Estimated time: {Math.max(5, totalQuestions * 3)} minutes</span>
+                </>
+              )}
             </div>
           </div>
         </div>

@@ -1,10 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState } from 'react';
 import { Plus, Save, Eye, Trash2, Upload, Move, GripVertical, X, Loader2, Minus, Copy } from 'lucide-react';
+import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 
 export const ComprehensionQuestion = ({ question, onUpdate }) => {
-  const [draggedIndex, setDraggedIndex] = useState(null);
-  const [dragOverIndex, setDragOverIndex] = useState(null);
-
   const addSubQuestion = () => {
     const subQuestions = [...(question.subQuestions || []), { 
       type: 'mcq', 
@@ -71,55 +69,15 @@ export const ComprehensionQuestion = ({ question, onUpdate }) => {
     }
   };
 
-  // Drag and Drop handlers
-  const handleDragStart = (e, index) => {
-    setDraggedIndex(index);
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/html', e.target);
-  };
+  // react-beautiful-dnd drag end handler
+  const handleDragEnd = (result) => {
+    if (!result.destination) return; // dropped outside list
 
-  const handleDragOver = (e, index) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    setDragOverIndex(index);
-  };
+    const items = Array.from(question.subQuestions);
+    const [reorderedItem] = items.splice(result.source.index, 1);
+    items.splice(result.destination.index, 0, reorderedItem);
 
-  const handleDragLeave = (e) => {
-    // Only clear if we're actually leaving the drop zone
-    if (!e.currentTarget.contains(e.relatedTarget)) {
-      setDragOverIndex(null);
-    }
-  };
-
-  const handleDrop = (e, dropIndex) => {
-    e.preventDefault();
-    
-    if (draggedIndex === null || draggedIndex === dropIndex) {
-      setDraggedIndex(null);
-      setDragOverIndex(null);
-      return;
-    }
-
-    const subQuestions = [...question.subQuestions];
-    const draggedItem = subQuestions[draggedIndex];
-    
-    // Remove the dragged item
-    subQuestions.splice(draggedIndex, 1);
-    
-    // Insert at the new position
-    const insertIndex = draggedIndex < dropIndex ? dropIndex - 1 : dropIndex;
-    subQuestions.splice(insertIndex, 0, draggedItem);
-    
-    onUpdate({ ...question, subQuestions });
-    
-    // Reset drag state
-    setDraggedIndex(null);
-    setDragOverIndex(null);
-  };
-
-  const handleDragEnd = () => {
-    setDraggedIndex(null);
-    setDragOverIndex(null);
+    onUpdate({ ...question, subQuestions: items });
   };
 
   const getTotalPoints = () => {
@@ -191,237 +149,219 @@ export const ComprehensionQuestion = ({ question, onUpdate }) => {
           </div>
         )}
 
-        {question.subQuestions?.map((subQ, index) => (
-          <div 
-            key={index} 
-            className={`border rounded-lg p-6 mb-6 transition-all duration-200 ${
-              draggedIndex === index 
-                ? 'opacity-50 scale-95 shadow-lg' 
-                : 'hover:shadow-md'
-            } ${
-              dragOverIndex === index && draggedIndex !== index
-                ? 'border-blue-400 bg-blue-50 border-2'
-                : 'border-gray-200'
-            }`}
-            draggable
-            onDragStart={(e) => handleDragStart(e, index)}
-            onDragOver={(e) => handleDragOver(e, index)}
-            onDragLeave={handleDragLeave}
-            onDrop={(e) => handleDrop(e, index)}
-            onDragEnd={handleDragEnd}
-          >
-            {/* Question Header */}
-            <div className="flex justify-between items-start mb-4">
-              <div className="flex items-center space-x-3">
-                {/* Drag Handle */}
-                <div 
-                  className="cursor-grab active:cursor-grabbing p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded"
-                  title="Drag to reorder"
-                  onMouseDown={(e) => e.stopPropagation()}
-                >
-                  <GripVertical size={16} />
-                </div>
-                
-                <span className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm font-medium">
-                  Q{index + 1}
-                </span>
-                <select
-                  value={subQ.type}
-                  onChange={(e) => updateSubQuestion(index, 'type', e.target.value)}
-                  className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <option value="mcq">Multiple Choice</option>
-                  <option value="true-false">True/False</option>
-                </select>
-              </div>
-              
-              <div className="flex items-center space-x-2">
-                {/* Points Input */}
-                <div className="flex items-center space-x-1">
-                  <span className="text-xs text-gray-600">Points:</span>
-                  <input
-                    type="number"
-                    min="1"
-                    max="10"
-                    value={subQ.points || 1}
-                    onChange={(e) => updateSubQuestion(index, 'points', parseInt(e.target.value) || 1)}
-                    className="w-16 px-2 py-1 border border-gray-300 rounded text-sm text-center focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    onClick={(e) => e.stopPropagation()}
-                  />
-                </div>
-                
-                {/* Action Buttons */}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    moveSubQuestion(index, 'up');
-                  }}
-                  disabled={index === 0}
-                  className="p-1 text-gray-400 hover:text-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
-                  title="Move up"
-                >
-                  <Move size={14} className="rotate-180" />
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    moveSubQuestion(index, 'down');
-                  }}
-                  disabled={index === question.subQuestions.length - 1}
-                  className="p-1 text-gray-400 hover:text-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
-                  title="Move down"
-                >
-                  <Move size={14} />
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    duplicateSubQuestion(index);
-                  }}
-                  className="p-1 text-gray-400 hover:text-blue-600"
-                  title="Duplicate question"
-                >
-                  <Copy size={14} />
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    removeSubQuestion(index);
-                  }}
-                  className="p-1 text-gray-400 hover:text-red-600"
-                  title="Delete question"
-                >
-                  <Trash2 size={14} />
-                </button>
-              </div>
-            </div>
+        <DragDropContext onDragEnd={handleDragEnd}>
+          <Droppable droppableId="subQuestions">
+            {(provided, snapshot) => (
+              <div 
+                {...provided.droppableProps} 
+                ref={provided.innerRef}
+                className={`space-y-4 ${snapshot.isDraggingOver ? 'bg-blue-50 rounded-lg p-2' : ''}`}
+              >
+                {question.subQuestions?.map((subQ, index) => (
+                  <Draggable key={`subQ-${index}`} draggableId={`subQ-${index}`} index={index}>
+                    {(provided, snapshot) => (
+                      <div 
+                        ref={provided.innerRef}
+                        {...provided.draggableProps}
+                        className={`border rounded-lg p-6 bg-white transition-all duration-200 ${
+                          snapshot.isDragging 
+                            ? 'shadow-2xl rotate-3 transform scale-105' 
+                            : 'hover:shadow-md'
+                        }`}
+                      >
+                        {/* Question Header */}
+                        <div className="flex justify-between items-start mb-4">
+                          <div className="flex items-center space-x-3">
+                            {/* Drag Handle */}
+                            <div 
+                              {...provided.dragHandleProps}
+                              className="cursor-grab active:cursor-grabbing p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
+                              title="Drag to reorder"
+                            >
+                              <GripVertical size={16} />
+                            </div>
+                            
+                            <span className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm font-medium">
+                              Q{index + 1}
+                            </span>
+                            <select
+                              value={subQ.type}
+                              onChange={(e) => updateSubQuestion(index, 'type', e.target.value)}
+                              className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            >
+                              <option value="mcq">Multiple Choice</option>
+                              <option value="true-false">True/False</option>
+                            </select>
+                          </div>
+                          
+                          <div className="flex items-center space-x-2">
+                            {/* Points Input */}
+                            <div className="flex items-center space-x-1">
+                              <span className="text-xs text-gray-600">Points:</span>
+                              <input
+                                type="number"
+                                min="1"
+                                max="10"
+                                value={subQ.points || 1}
+                                onChange={(e) => updateSubQuestion(index, 'points', parseInt(e.target.value) || 1)}
+                                className="w-16 px-2 py-1 border border-gray-300 rounded text-sm text-center focus:outline-none focus:ring-1 focus:ring-blue-500"
+                              />
+                            </div>
+                            
+                            {/* Action Buttons */}
+                            <button
+                              onClick={() => moveSubQuestion(index, 'up')}
+                              disabled={index === 0}
+                              className="p-1 text-gray-400 hover:text-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                              title="Move up"
+                            >
+                              <Move size={14} className="rotate-180" />
+                            </button>
+                            <button
+                              onClick={() => moveSubQuestion(index, 'down')}
+                              disabled={index === question.subQuestions.length - 1}
+                              className="p-1 text-gray-400 hover:text-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                              title="Move down"
+                            >
+                              <Move size={14} />
+                            </button>
+                            <button
+                              onClick={() => duplicateSubQuestion(index)}
+                              className="p-1 text-gray-400 hover:text-blue-600"
+                              title="Duplicate question"
+                            >
+                              <Copy size={14} />
+                            </button>
+                            <button
+                              onClick={() => removeSubQuestion(index)}
+                              className="p-1 text-gray-400 hover:text-red-600"
+                              title="Delete question"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        </div>
 
-            {/* Question Input */}
-            <div className="mb-4">
-              <input
-                type="text"
-                value={subQ.question}
-                onChange={(e) => updateSubQuestion(index, 'question', e.target.value)}
-                placeholder="Enter the question..."
-                className="w-full px-4 py-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                onClick={(e) => e.stopPropagation()}
-              />
-            </div>
+                        {/* Question Input */}
+                        <div className="mb-4">
+                          <input
+                            type="text"
+                            value={subQ.question}
+                            onChange={(e) => updateSubQuestion(index, 'question', e.target.value)}
+                            placeholder="Enter the question..."
+                            className="w-full px-4 py-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          />
+                        </div>
 
-            {/* Options for MCQ */}
-            {subQ.type === 'mcq' && (
-              <div className="space-y-3">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm font-medium text-gray-700">Answer Options</span>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      addOption(index);
-                    }}
-                    className="flex items-center space-x-1 px-3 py-1 text-sm text-blue-600 hover:bg-blue-50 rounded"
-                  >
-                    <Plus size={14} />
-                    <span>Add Option</span>
-                  </button>
-                </div>
-                
-                {subQ.options.map((option, optIndex) => (
-                  <div key={optIndex} className="flex items-center space-x-3 group">
-                    <div className="flex items-center">
-                      <input
-                        type="radio"
-                        name={`q${index}_answer`}
-                        checked={subQ.answer === optIndex}
-                        onChange={() => updateSubQuestion(index, 'answer', optIndex)}
-                        className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
-                        onClick={(e) => e.stopPropagation()}
-                      />
-                      <span className="ml-2 text-sm text-gray-600 w-6">
-                        {String.fromCharCode(65 + optIndex)}.
-                      </span>
-                    </div>
-                    <input
-                      type="text"
-                      value={option}
-                      onChange={(e) => updateOption(index, optIndex, e.target.value)}
-                      placeholder={`Option ${String.fromCharCode(65 + optIndex)}...`}
-                      className="flex-1 px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      onClick={(e) => e.stopPropagation()}
-                    />
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        removeOption(index, optIndex);
-                      }}
-                      disabled={subQ.options.length <= 2}
-                      className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-red-600 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
-                      title="Remove option"
-                    >
-                      <Minus size={16} />
-                    </button>
-                  </div>
+                        {/* Options for MCQ */}
+                        {subQ.type === 'mcq' && (
+                          <div className="space-y-3">
+                            <div className="flex justify-between items-center">
+                              <span className="text-sm font-medium text-gray-700">Answer Options</span>
+                              <button
+                                onClick={() => addOption(index)}
+                                className="flex items-center space-x-1 px-3 py-1 text-sm text-blue-600 hover:bg-blue-50 rounded"
+                              >
+                                <Plus size={14} />
+                                <span>Add Option</span>
+                              </button>
+                            </div>
+                            
+                            {subQ.options.map((option, optIndex) => (
+                              <div key={optIndex} className="flex items-center space-x-3 group">
+                                <div className="flex items-center">
+                                  <input
+                                    type="radio"
+                                    name={`q${index}_answer`}
+                                    checked={subQ.answer === optIndex}
+                                    onChange={() => updateSubQuestion(index, 'answer', optIndex)}
+                                    className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
+                                  />
+                                  <span className="ml-2 text-sm text-gray-600 w-6">
+                                    {String.fromCharCode(65 + optIndex)}.
+                                  </span>
+                                </div>
+                                <input
+                                  type="text"
+                                  value={option}
+                                  onChange={(e) => updateOption(index, optIndex, e.target.value)}
+                                  placeholder={`Option ${String.fromCharCode(65 + optIndex)}...`}
+                                  className="flex-1 px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                />
+                                <button
+                                  onClick={() => removeOption(index, optIndex)}
+                                  disabled={subQ.options.length <= 2}
+                                  className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-red-600 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
+                                  title="Remove option"
+                                >
+                                  <Minus size={16} />
+                                </button>
+                              </div>
+                            ))}
+                            
+                            <div className="text-xs text-gray-500 mt-2">
+                              Select the correct answer by clicking the radio button next to it.
+                            </div>
+                          </div>
+                        )}
+
+                        {/* True/False Options */}
+                        {subQ.type === 'true-false' && (
+                          <div className="space-y-2">
+                            <span className="text-sm font-medium text-gray-700">Correct Answer</span>
+                            <div className="flex space-x-6">
+                              <label className="flex items-center space-x-2">
+                                <input
+                                  type="radio"
+                                  name={`q${index}_tf_answer`}
+                                  checked={subQ.answer === true}
+                                  onChange={() => updateSubQuestion(index, 'answer', true)}
+                                  className="w-4 h-4 text-blue-600"
+                                />
+                                <span className="text-green-600 font-medium">True</span>
+                              </label>
+                              <label className="flex items-center space-x-2">
+                                <input
+                                  type="radio"
+                                  name={`q${index}_tf_answer`}
+                                  checked={subQ.answer === false}
+                                  onChange={() => updateSubQuestion(index, 'answer', false)}
+                                  className="w-4 h-4 text-blue-600"
+                                />
+                                <span className="text-red-600 font-medium">False</span>
+                              </label>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Essay placeholder */}
+                        {subQ.type === 'essay' && (
+                          <div className="bg-gray-50 p-4 rounded-lg">
+                            <div className="text-sm text-gray-600">
+                              Students will provide a detailed essay response to this question.
+                            </div>
+                            <div className="mt-2">
+                              <label className="block text-xs font-medium text-gray-700 mb-1">
+                                Expected Answer / Grading Notes (Optional)
+                              </label>
+                              <textarea
+                                value={subQ.expectedAnswer || ''}
+                                onChange={(e) => updateSubQuestion(index, 'expectedAnswer', e.target.value)}
+                                placeholder="Enter key points or expected answer for grading reference..."
+                                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md h-20 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </Draggable>
                 ))}
-                
-                <div className="text-xs text-gray-500 mt-2">
-                  Select the correct answer by clicking the radio button next to it.
-                </div>
+                {provided.placeholder}
               </div>
             )}
-
-            {/* True/False Options */}
-            {subQ.type === 'true-false' && (
-              <div className="space-y-2">
-                <span className="text-sm font-medium text-gray-700">Correct Answer</span>
-                <div className="flex space-x-6">
-                  <label className="flex items-center space-x-2">
-                    <input
-                      type="radio"
-                      name={`q${index}_tf_answer`}
-                      checked={subQ.answer === true}
-                      onChange={() => updateSubQuestion(index, 'answer', true)}
-                      className="w-4 h-4 text-blue-600"
-                      onClick={(e) => e.stopPropagation()}
-                    />
-                    <span className="text-green-600 font-medium">True</span>
-                  </label>
-                  <label className="flex items-center space-x-2">
-                    <input
-                      type="radio"
-                      name={`q${index}_tf_answer`}
-                      checked={subQ.answer === false}
-                      onChange={() => updateSubQuestion(index, 'answer', false)}
-                      className="w-4 h-4 text-blue-600"
-                      onClick={(e) => e.stopPropagation()}
-                    />
-                    <span className="text-red-600 font-medium">False</span>
-                  </label>
-                </div>
-              </div>
-            )}
-
-            {/* Essay placeholder */}
-            {subQ.type === 'essay' && (
-              <div className="bg-gray-50 p-4 rounded-lg">
-                <div className="text-sm text-gray-600">
-                  Students will provide a detailed essay response to this question.
-                </div>
-                <div className="mt-2">
-                  <label className="block text-xs font-medium text-gray-700 mb-1">
-                    Expected Answer / Grading Notes (Optional)
-                  </label>
-                  <textarea
-                    value={subQ.expectedAnswer || ''}
-                    onChange={(e) => updateSubQuestion(index, 'expectedAnswer', e.target.value)}
-                    placeholder="Enter key points or expected answer for grading reference..."
-                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md h-20 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    onClick={(e) => e.stopPropagation()}
-                  />
-                </div>
-              </div>
-            )}
-          </div>
-        ))}
+          </Droppable>
+        </DragDropContext>
       </div>
     </div>
   );
