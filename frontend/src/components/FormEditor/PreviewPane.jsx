@@ -181,6 +181,10 @@ export const PreviewPane = ({ form, mode = 'preview', onBack, onSubmit }) => {
 
     setSubmitting(true);
     try {
+      // Calculate completion time in seconds
+      const completionTimeMs = Date.now() - startTime;
+      const completionTimeSeconds = Math.floor(completionTimeMs / 1000);
+
       // Transform frontend data to match backend expected format
       const responses = [];
 
@@ -245,10 +249,11 @@ export const PreviewPane = ({ form, mode = 'preview', onBack, onSubmit }) => {
       const testResponse = {
         responses: responses,
         submittedAt: new Date().toISOString(),
-        completionTime: Date.now() - startTime
+        completionTime: completionTimeSeconds // Send time in seconds
       };
 
       console.log('Sending test response:', testResponse);
+      console.log('Completion time (seconds):', completionTimeSeconds);
 
       const response = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/forms/${form._id}/responses`, {
         method: 'POST',
@@ -479,33 +484,92 @@ export const PreviewPane = ({ form, mode = 'preview', onBack, onSubmit }) => {
       let passageText = question.text || '';
       const regex = /\[([^\]]+)\]/g;
       let match;
-      let result = '';
+      let result = [];
       let lastIndex = 0;
       let blankIndex = 0;
 
       while ((match = regex.exec(passageText)) !== null) {
-        result += passageText.substring(lastIndex, match.index);
+        // Add text before the blank
+        if (match.index > lastIndex) {
+          result.push(
+            <span key={`text-${blankIndex}-before`}>
+              {passageText.substring(lastIndex, match.index)}
+            </span>
+          );
+        }
+
+        // Add the droppable blank
         const points = question.blankOptions?.[blankIndex]?.points || 0;
         const filledOption = questionOptions.blanks[blankIndex];
         
-        // Create a droppable blank in the passage
-        result += `<span class="blank-container inline-block min-w-[100px]" data-blank-index="${blankIndex}">`;
-        
-        if (filledOption) {
-          result += `<span class="filled-blank inline-block min-w-[100px] border-b-2 border-blue-400 mx-1 px-3 py-2 bg-blue-100 text-center font-medium transition-colors cursor-move" style="min-height: 40px; line-height: 1.2;">${filledOption.text}</span>`;
-        } else {
-          result += `<span class="empty-blank inline-block min-w-[100px] border-b-2 border-dashed border-gray-400 mx-1 px-3 py-2 bg-gray-50 text-center text-gray-400 transition-colors hover:bg-blue-50 hover:border-blue-300" style="min-height: 40px; line-height: 1.2;">____</span>`;
-        }
-        
-        if (mode === 'preview' && points > 0) {
-          result += `<span class="absolute -top-2 -right-1 bg-green-500 text-white text-xs px-1.5 py-0.5 rounded-full font-bold" style="font-size: 10px;">${points}pt</span>`;
-        }
-        
-        result += '</span>';
+        result.push(
+          <Droppable key={`blank-${blankIndex}`} droppableId={`blank-${blankIndex}`}>
+            {(provided, snapshot) => (
+              <span
+                ref={provided.innerRef}
+                {...provided.droppableProps}
+                className={`inline-block min-w-[100px] min-h-[40px] border-2 border-dashed rounded-lg mx-1 px-3 py-2 transition-colors relative ${
+                  snapshot.isDraggingOver 
+                    ? 'border-blue-400 bg-blue-50' 
+                    : 'border-gray-300 hover:border-blue-300'
+                } ${filledOption ? 'bg-blue-50 border-blue-300' : 'bg-gray-50'}`}
+                style={{ verticalAlign: 'middle' }}
+              >
+                {filledOption ? (
+                  <Draggable draggableId={filledOption.id} index={0}>
+                    {(provided, snapshot) => (
+                      <span
+                        ref={provided.innerRef}
+                        {...provided.draggableProps}
+                        {...provided.dragHandleProps}
+                        className={`inline-flex items-center space-x-1 px-2 py-1 rounded-md transition-all ${
+                          mode === 'preview' && filledOption.type === 'correct' 
+                            ? 'bg-green-100 border border-green-300 text-green-800' 
+                            : 'bg-blue-100 border border-blue-300 text-blue-800'
+                        } ${
+                          snapshot.isDragging 
+                            ? 'shadow-lg rotate-2 scale-105' 
+                            : 'hover:shadow-md cursor-move'
+                        }`}
+                      >
+                        <GripVertical className="w-3 h-3 text-gray-400" />
+                        <span className="font-medium text-sm">{filledOption.text}</span>
+                        {mode === 'preview' && (
+                          <span className={`px-1 py-0.5 rounded-full text-xs font-bold ${
+                            filledOption.points > 0 
+                              ? 'bg-green-200 text-green-800' 
+                              : 'bg-gray-200 text-gray-600'
+                          }`}>
+                            {filledOption.points}pt
+                          </span>
+                        )}
+                      </span>
+                    )}
+                  </Draggable>
+                ) : (
+                  <span className="text-gray-400 text-sm italic">
+                    ___
+                  </span>
+                )}
+                {provided.placeholder}
+              </span>
+            )}
+          </Droppable>
+        );
+
         lastIndex = regex.lastIndex;
         blankIndex++;
       }
-      result += passageText.substring(lastIndex);
+
+      // Add remaining text
+      if (lastIndex < passageText.length) {
+        result.push(
+          <span key="text-end">
+            {passageText.substring(lastIndex)}
+          </span>
+        );
+      }
+
       return result;
     };
 
@@ -523,88 +587,11 @@ export const PreviewPane = ({ form, mode = 'preview', onBack, onSubmit }) => {
             </p>
           </div>
 
-          {/* Passage with Blanks */}
+          {/* Passage with Interactive Blanks */}
           <div className="bg-gray-50 border border-gray-200 rounded-lg p-6">
-            <div className="text-lg leading-relaxed space-y-4">
-              {question.blanks?.map((blank, blankIndex) => {
-                const points = question.blankOptions?.[blankIndex]?.points || 0;
-                const filledOption = questionOptions.blanks[blankIndex];
-                
-                return (
-                  <div key={blankIndex} className="inline-block relative">
-                    <div className="flex items-center space-x-2 mb-2">
-                      <span className="text-sm font-medium text-gray-600">Blank {blankIndex + 1}:</span>
-                      {mode === 'preview' && points > 0 && (
-                        <div className="flex items-center space-x-1">
-                          <Target className="w-3 h-3 text-green-600" />
-                          <span className="text-xs text-green-600 font-medium">{points}pt</span>
-                        </div>
-                      )}
-                    </div>
-                    
-                    <Droppable droppableId={`blank-${blankIndex}`}>
-                      {(provided, snapshot) => (
-                        <div
-                          ref={provided.innerRef}
-                          {...provided.droppableProps}
-                          className={`inline-block min-w-[120px] min-h-[50px] border-2 border-dashed rounded-lg p-2 transition-colors ${
-                            snapshot.isDraggingOver 
-                              ? 'border-blue-400 bg-blue-50' 
-                              : 'border-gray-300 hover:border-blue-300'
-                          } ${filledOption ? 'bg-blue-50 border-blue-300' : 'bg-gray-50'}`}
-                        >
-                          {filledOption ? (
-                            <Draggable draggableId={filledOption.id} index={0}>
-                              {(provided, snapshot) => (
-                                <div
-                                  ref={provided.innerRef}
-                                  {...provided.draggableProps}
-                                  {...provided.dragHandleProps}
-                                  className={`px-3 py-2 rounded-lg flex items-center space-x-2 transition-all ${
-                                    mode === 'preview' && filledOption.type === 'correct' 
-                                      ? 'bg-green-100 border border-green-300 text-green-800' 
-                                      : 'bg-blue-100 border border-blue-300 text-blue-800'
-                                  } ${
-                                    snapshot.isDragging 
-                                      ? 'shadow-lg rotate-2 scale-105' 
-                                      : 'hover:shadow-md cursor-move'
-                                  }`}
-                                >
-                                  <GripVertical className="w-4 h-4 text-gray-400" />
-                                  <span className="font-medium">{filledOption.text}</span>
-                                  {mode === 'preview' && (
-                                    <div className={`px-2 py-0.5 rounded-full text-xs font-bold ${
-                                      filledOption.points > 0 
-                                        ? 'bg-green-200 text-green-800' 
-                                        : 'bg-gray-200 text-gray-600'
-                                    }`}>
-                                      {filledOption.points}pt
-                                    </div>
-                                  )}
-                                </div>
-                              )}
-                            </Draggable>
-                          ) : (
-                            <div className="text-gray-400 text-sm italic text-center py-3">
-                              Drop word here
-                            </div>
-                          )}
-                          {provided.placeholder}
-                        </div>
-                      )}
-                    </Droppable>
-                  </div>
-                );
-              })}
-            </div>
-            
-            {/* Original passage text for context */}
-            <div className="mt-6 pt-6 border-t border-gray-200">
-              <h4 className="text-sm font-medium text-gray-600 mb-3">Passage with blanks:</h4>
-              <div 
-                className="text-base leading-relaxed text-gray-700"
-                dangerouslySetInnerHTML={{ __html: renderPassageWithBlanks() }}
-              />
+            <h4 className="text-lg font-semibold text-gray-800 mb-4">Complete the passage:</h4>
+            <div className="text-lg leading-relaxed">
+              {renderPassageWithBlanks()}
             </div>
           </div>
 
@@ -807,7 +794,7 @@ export const PreviewPane = ({ form, mode = 'preview', onBack, onSubmit }) => {
 
   return (
     <div className="bg-white rounded-lg border border-gray-200 shadow-sm">
-      {/* Header - Show navigation for test mode */}
+      {/* Header - Show navigation for test mode only */}
       {mode === 'test' && (
         <div className="bg-white shadow-sm border-b">
           <div className="max-w-7xl mx-auto px-4 py-4">
@@ -823,58 +810,64 @@ export const PreviewPane = ({ form, mode = 'preview', onBack, onSubmit }) => {
                   </button>
                 )}
                 <h1 className="text-2xl font-bold text-gray-900">
-                  {form.title}
+                  {form.title || 'Untitled Form'}
                 </h1>
               </div>
-              <button
-                onClick={handleSubmitTest}
-                disabled={submitting}
-                className="flex items-center px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
-              >
-                {submitting ? (
-                  <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                ) : (
-                  <Send className="w-5 h-5 mr-2" />
-                )}
-                {submitting ? 'Submitting...' : 'Submit Test'}
-              </button>
+              <div className="bg-gray-100 text-gray-700 px-3 py-2 rounded-full text-sm font-medium">
+                {totalQuestions} Question{totalQuestions !== 1 ? 's' : ''}
+              </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* Form Header */}
-      <div className="border-b border-gray-200 p-6">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center space-x-4">
-            {onBack && (
-              <button
-                onClick={onBack}
-                className="flex items-center px-3 py-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-md transition-colors"
-              >
-                <ArrowLeft className="w-4 h-4 mr-2" />
-                Back
-              </button>
-            )}
-            <h1 className="text-3xl font-bold text-gray-900">
-              {form.title || 'Untitled Form'}
-              {mode === 'preview' && <span className="text-blue-600 ml-2">(Preview)</span>}
-            </h1>
-          </div>
-          <div className="flex items-center space-x-4">
-            {totalPoints > 0 && mode === 'preview' && (
-              <div className="bg-gradient-to-r from-green-500 to-blue-500 text-white px-4 py-2 rounded-full flex items-center space-x-2">
-                <Award className="w-5 h-5" />
-                <span className="font-bold">{totalPoints} Total Points</span>
+      {/* Form Header - Only show for preview mode */}
+      {mode === 'preview' && (
+        <div className="border-b border-gray-200 p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center space-x-4">
+              {onBack && (
+                <button
+                  onClick={onBack}
+                  className="flex items-center px-3 py-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-md transition-colors"
+                >
+                  <ArrowLeft className="w-4 h-4 mr-2" />
+                  Back
+                </button>
+              )}
+              <h1 className="text-3xl font-bold text-gray-900">
+                {form.title || 'Untitled Form'}
+                <span className="text-blue-600 ml-2">(Preview)</span>
+              </h1>
+            </div>
+            <div className="flex items-center space-x-4">
+              {totalPoints > 0 && (
+                <div className="bg-gradient-to-r from-green-500 to-blue-500 text-white px-4 py-2 rounded-full flex items-center space-x-2">
+                  <Award className="w-5 h-5" />
+                  <span className="font-bold">{totalPoints} Total Points</span>
+                </div>
+              )}
+              <div className="bg-gray-100 text-gray-700 px-3 py-2 rounded-full text-sm font-medium">
+                {totalQuestions} Question{totalQuestions !== 1 ? 's' : ''}
               </div>
-            )}
-            <div className="bg-gray-100 text-gray-700 px-3 py-2 rounded-full text-sm font-medium">
-              {totalQuestions} Question{totalQuestions !== 1 ? 's' : ''}
             </div>
           </div>
-        </div>
 
-        {form.headerImage && (
+          {form.headerImage && (
+            <div className="w-full">
+              <img 
+                src={form.headerImage} 
+                alt="Form Header" 
+                className="w-full h-auto max-h-96 object-contain rounded-lg shadow-lg border border-gray-200"
+              />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Header image for test mode (if exists) */}
+      {mode === 'test' && form.headerImage && (
+        <div className="border-b border-gray-200 p-6">
           <div className="w-full">
             <img 
               src={form.headerImage} 
@@ -882,8 +875,8 @@ export const PreviewPane = ({ form, mode = 'preview', onBack, onSubmit }) => {
               className="w-full h-auto max-h-96 object-contain rounded-lg shadow-lg border border-gray-200"
             />
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Questions */}
       <div className="p-6">
@@ -965,6 +958,9 @@ export const PreviewPane = ({ form, mode = 'preview', onBack, onSubmit }) => {
           <div className="flex items-center justify-between">
             <div className="text-sm text-gray-600">
               Form {mode} • {totalQuestions} question{totalQuestions !== 1 ? 's' : ''}
+              {mode === 'test' && (
+                <span className="ml-2">• Started {new Date(startTime).toLocaleTimeString()}</span>
+              )}
             </div>
             <div className="flex items-center space-x-4">
               {mode === 'test' ? (
