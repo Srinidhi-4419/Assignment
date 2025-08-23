@@ -5,9 +5,7 @@ import { FormHeader } from './FormHeader';
 import { QuestionList } from './QuestionList';
 import { PreviewPane } from './PreviewPane';
 import { QuestionEditor } from './QuestionEditor';
-import { ClozeQuestion } from './ClozeQuesiton';
-import { CategorizeQuestion } from './CategorizeQuestion';
-import { ComprehensionQuestion } from './ComprehensionQuestion';
+
 
 const CreateForm = () => {
   const [form, setForm] = useState({

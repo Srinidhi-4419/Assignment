@@ -127,23 +127,3 @@ exports.deleteForm = async (req, res) => {
   }
 };
 
-exports.getFormStats = async (req, res) => {
-  try {
-    const totalResponses = await Response.countDocuments({ formId: req.params.id });
-    const form = await Form.findById(req.params.id);
-    if (!form) return res.status(404).json({ error: 'Form not found' });
-
-    const lastResponse = totalResponses > 0
-      ? (await Response.findOne({ formId: req.params.id }).sort({ submittedAt: -1 })).submittedAt
-      : null;
-
-    res.json({
-      formTitle: form.title,
-      totalResponses,
-      createdAt: form.createdAt,
-      lastResponse
-    });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-};

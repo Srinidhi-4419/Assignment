@@ -61,13 +61,7 @@ const responseSchema = new mongoose.Schema({
   
   // Timestamps and metadata
   submittedAt: { type: Date, default: Date.now },
-  gradedAt: Date, // When the response was graded (if applicable)
-  gradedBy: String, // Who graded it (if needed for manual review)
-  
-  // Additional useful fields
-  timeSpent: Number, // Time spent on the form in seconds
-  ipAddress: String, // For tracking if needed
-  userAgent: String // Browser/device info if needed
+ 
 });
 
 // Indexes for better query performance
@@ -103,84 +97,6 @@ responseSchema.methods.calculateScores = function() {
   };
 };
 
-// Method to grade a specific question response
-responseSchema.methods.gradeResponse = async function(questionIndex) {
-  const response = this.responses[questionIndex];
-  if (!response) return null;
-  
-  // Get the original form to compare answers
-  const Form = mongoose.model('Form');
-  const form = await Form.findById(this.formId);
-  if (!form) throw new Error('Form not found');
-  
-  const question = form.questions[questionIndex];
-  if (!question) throw new Error('Question not found');
-  
-  let pointsEarned = 0;
-  let maxPoints = 0;
-  
-  switch (response.questionType) {
-    case 'categorize':
-      // Grade categorization
-      response.categorizedItems.forEach(item => {
-        const correctItem = question.items.find(qi => qi.text === item.itemText);
-        if (correctItem) {
-          item.correctCategory = correctItem.belongsTo;
-          item.isCorrect = item.selectedCategory === correctItem.belongsTo;
-          if (item.isCorrect) {
-            const category = question.categories.find(c => c.name === correctItem.belongsTo);
-            pointsEarned += category ? category.points : 1;
-          }
-        }
-      });
-      maxPoints = question.items.reduce((total, item) => {
-        const category = question.categories.find(c => c.name === item.belongsTo);
-        return total + (category ? category.points : 1);
-      }, 0);
-      break;
-      
-    case 'cloze':
-      // Grade cloze questions
-      response.blankAnswers.forEach(blank => {
-        const blankKey = blank.blankIndex.toString();
-        const blankOption = question.blankOptions.get(blankKey);
-        if (blankOption) {
-          blank.correctAnswer = blankOption.correct;
-          const allCorrectAnswers = [blankOption.correct, ...blankOption.additional];
-          blank.isCorrect = allCorrectAnswers.some(answer => 
-            answer.toLowerCase().trim() === blank.userAnswer.toLowerCase().trim()
-          );
-          if (blank.isCorrect) {
-            pointsEarned += blankOption.points || 1;
-          }
-          maxPoints += blankOption.points || 1;
-        }
-      });
-      break;
-      
-    case 'comprehension':
-      // Grade comprehension sub-questions
-      response.subQuestionAnswers.forEach((subAnswer, index) => {
-        const subQuestion = question.subQuestions[index];
-        if (subQuestion) {
-          subAnswer.correctAnswer = subQuestion.answer;
-          subAnswer.maxPoints = subQuestion.points || 1;
-          
-          // Both mcq and true-false can be auto-graded
-          subAnswer.isCorrect = subAnswer.answer === subQuestion.answer;
-          subAnswer.pointsEarned = subAnswer.isCorrect ? (subQuestion.points || 1) : 0;
-          
-          pointsEarned += subAnswer.pointsEarned;
-          maxPoints += subQuestion.points || 1;
-        }
-      });
-      break;
-  }
-  
-  response.totalPointsEarned = pointsEarned;
-  response.maxPossiblePoints = maxPoints;
-  
-  return response;
-};
+
 
 module.exports = mongoose.model('Response', responseSchema);
